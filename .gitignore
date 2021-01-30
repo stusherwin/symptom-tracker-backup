@@ -1,0 +1,11 @@
+elm-stuff/
+node_modules/
+tmp/
+dist/
+yarn.lock
+.stack-work/
+npm-debug.log
+run-server
+upgrade-db
+main.config
+test.config

@@ -1,0 +1,17 @@
+
+flags: {}
+extra-package-dbs: []
+packages:
+- .
+extra-deps:
+- servant-multipart-0.11.6
+- servant-options-0.1.0.0
+- servant-quickcheck-0.0.9.0
+- servant-0.17
+- servant-client-0.17
+- servant-client-core-0.17
+- servant-docs-0.11.5
+- servant-foreign-0.15.1
+- servant-server-0.17
+
+resolver: lts-16.5

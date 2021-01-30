@@ -1,0 +1,92 @@
+name:                symptom-tracker
+version:             0.1.0.0
+-- synopsis:
+-- description:
+homepage:            https://github.com/stusherwin/symptom-tracker#readme
+license:             BSD3
+license-file:        LICENSE
+author:              Author name here
+maintainer:          example@example.com
+copyright:           2017 Author name here
+category:            Web
+build-type:          Simple
+extra-source-files:  README.md
+cabal-version:       >=1.10
+
+library
+  hs-source-dirs:      server/src
+  exposed-modules:     App
+                     , Api
+                     , Config
+                     , UpgradeDB 
+  other-modules:     
+  ghc-options:         -Wall -Werror=incomplete-patterns -Werror=incomplete-uni-patterns -fno-warn-name-shadowing -fno-warn-orphans -fno-warn-type-defaults
+  build-depends:       aeson
+                     , aeson-pretty
+                     , ansi-terminal
+                     , base
+                     , bytestring
+                     , case-insensitive
+                     , cassava
+                     , containers
+                     , directory
+                     , extra
+                     , hashable
+                     , http-conduit
+                     , http-media
+                     , http-types
+                     , lens
+                     , postgresql-simple
+                     , process
+                     , safe
+                     , servant-server
+                     , servant-multipart
+                     , tagsoup
+                     , text
+                     , time
+                     , transformers
+                     , unordered-containers
+                     , uuid
+                     , vector
+                     , wai
+                     , wai-extra
+                     , wai-middleware-static
+  default-language:    Haskell2010
+
+executable symptom-tracker
+  hs-source-dirs:      server/app
+  main-is:             Main.hs
+  ghc-options:         -threaded -rtsopts -with-rtsopts=-N -Wall -Werror=incomplete-patterns -Werror=incomplete-uni-patterns -fno-warn-name-shadowing -fno-warn-orphans -fno-warn-type-defaults
+  build-depends:       symptom-tracker
+                     , aeson                     
+                     , base
+                     , bytestring
+                     , http-types
+                     , uuid
+                     , text
+                     , wai
+                     , warp
+                     , wai-extra
+  default-language:    Haskell2010
+
+test-suite symptom-tracker-test
+  type:                exitcode-stdio-1.0
+  hs-source-dirs:      server/test
+  main-is:             Spec.hs
+  other-modules:       
+  ghc-options:         -threaded -rtsopts -with-rtsopts=-N -Wall -Werror=incomplete-patterns -Werror=incomplete-uni-patterns -fno-warn-name-shadowing -fno-warn-orphans -fno-warn-type-defaults
+  build-depends:       symptom-tracker
+                     , base
+                     , base-compat-batteries
+                     , bytestring
+                     , containers
+                     , directory
+                     , hspec
+                     , hspec-wai
+                     , time
+                     , wai-extra
+  default-language:    Haskell2010
+
+source-repository head
+  type:     git
+  location: https://github.com/stusherwin/symptom-tracker
