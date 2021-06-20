@@ -6,31 +6,30 @@ class ScrollableContainer extends HTMLElement {
   }
 
   static get observedAttributes() {
-    return ['scroll'];
+    return [];
   }
 
   connectedCallback() {
-    var scrollPercent = this.getAttribute("scroll");
-    if (scrollPercent) {
-      this.applyScroll(scrollPercent);
-    }
+    var scrollBarWidth = this.offsetHeight - this.clientHeight;
+    this.style.bottom = (-scrollBarWidth) + 'px';
 
-    this.onscroll = () => {
-      requestAnimationFrame(() => {
-        this.dispatchEvent(new CustomEvent('scrollable-scroll'));
-      });
+    var parent = this.parentElement;
+    while (parent && !parent.classList.contains("scrollable-parent")) {
+      parent = parent.parentElement;
+    }
+    if (parent) {
+      parent.style.paddingBottom = scrollBarWidth + 'px';
+      this.parentContainer = parent;
+    }
+  }
+
+  disconnectedCallback() {
+    if (this.parentContainer) {
+      this.parentContainer.style.paddingBottom = null;
     }
   }
 
   attributeChangedCallback(name, oldValue, newValue) {
-    if (name === "scroll") {
-      this.applyScroll(newValue);
-    }
-  }
-
-  applyScroll(percent) {
-    var newScroll = (this.scrollWidth - this.clientWidth) * parseFloat(percent) / 100.0;
-    this.scroll(newScroll, 0);
   }
 }
 
@@ -55,9 +54,9 @@ class DropdownList extends HTMLElement {
     filteredOptions.forEach(o => o.classList.remove("hidden-all"));
 
     if (filteredOptions.length == 0) {
-      this.optionsNone.classList.remove("hidden-all");
+      this.optionsNotFound.classList.remove("hidden-all");
     } else {
-      this.optionsNone.classList.add("hidden-all");
+      this.optionsNotFound.classList.add("hidden-all");
     }
   }
 
@@ -66,7 +65,7 @@ class DropdownList extends HTMLElement {
     this.filterOptions();
     this.selectedOptionDisplay.innerHTML = option.innerHTML;
     this.selectedOptionDisplay.classList.remove("hidden-all");
-    this.optionsParent.classList.add("hidden-visually");
+    this.hideOptionsParent();
 
     if (this.selectedOptionClasses && this.unselectedOptionClasses) {
       var options = Array.from(this.querySelectorAll('ul.options-parent > li.options-selectable'));
@@ -91,9 +90,9 @@ class DropdownList extends HTMLElement {
       throw "DropdownList error: options-input not found!";
     }
 
-    this.optionsNone = this.querySelector('ul.options-parent > li.options-none');
-    if (!this.optionsNone) {
-      throw "DropdownList error: options-none not found!";
+    this.optionsNotFound = this.querySelector('ul.options-parent > li.options-not-found');
+    if (!this.optionsNotFound) {
+      throw "DropdownList error: options-not-found not found!";
     }
 
     this.optionsParent = this.querySelector('ul.options-parent');
@@ -135,7 +134,7 @@ class DropdownList extends HTMLElement {
 
     this.input.addEventListener("focus", e => {
       this.selectedOptionDisplay.classList.add("hidden-all");
-      this.optionsParent.classList.remove("hidden-visually");
+      this.showOptionsParent();
     });
 
     this.addEventListener('keydown', e => {
@@ -143,7 +142,7 @@ class DropdownList extends HTMLElement {
         case 'ArrowDown':
           e.preventDefault();
 
-          this.optionsParent.classList.remove("hidden-visually");
+          this.showOptionsParent();
           this.selectedOptionDisplay.classList.add("hidden-all");
 
           var filteredOptions = Array.from(this.querySelectorAll('ul.options-parent > li.options-selectable:not(.hidden-all)'));
@@ -172,7 +171,7 @@ class DropdownList extends HTMLElement {
         case 'ArrowUp':
           e.preventDefault();
 
-          this.optionsParent.classList.remove("hidden-visually");
+          this.showOptionsParent();
           this.selectedOptionDisplay.classList.add("hidden-all");
 
           var filteredOptions = Array.from(this.querySelectorAll('ul.options-parent > li.options-selectable:not(.hidden-all)'));
@@ -202,7 +201,7 @@ class DropdownList extends HTMLElement {
           break;
 
         case 'Escape':
-          this.optionsParent.classList.add("hidden-visually");
+          this.hideOptionsParent();
           this.selectedOptionDisplay.classList.remove("hidden-all");
 
           if (this.selectedOptionClasses && this.unselectedOptionClasses) {
@@ -236,7 +235,7 @@ class DropdownList extends HTMLElement {
             this.input.focus();
           }
 
-          this.optionsParent.classList.remove("hidden-visually");
+          this.showOptionsParent();
       }
     })
 
@@ -266,7 +265,7 @@ class DropdownList extends HTMLElement {
       var eventListener = e => {
         e.stopPropagation();
         this.selectOption(o);
-        this.optionsParent.classList.add("hidden-visually");
+        this.hideOptionsParent();
       };
       o.addEventListener("click", eventListener);
       this.optionsRemoveListeners.push(() => o.removeEventListener("click", eventListener));
@@ -309,7 +308,7 @@ class DropdownList extends HTMLElement {
         if (document.activeElement !== this.input && !options.some(o => document.activeElement === o)) {
           this.classList.remove("z-10");
           this.classList.add("z-0");
-          this.optionsParent.classList.add("hidden-visually");
+          this.hideOptionsParent();
           this.selectedOptionDisplay.classList.remove("hidden-all");
           if (this.selectedOptionClasses && this.unselectedOptionClasses) {
             var options = Array.from(this.querySelectorAll('ul.options-parent > li.options-selectable'));
@@ -337,6 +336,27 @@ class DropdownList extends HTMLElement {
     });
   }
 
+  showOptionsParent() {
+    this.optionsParent.classList.remove("hidden-visually");
+    var size = this.optionsParent.getBoundingClientRect();
+    if (window.innerHeight > size.y + size.height) {
+      return;
+    }
+
+    if (size.y - 18 > window.innerHeight / 2) {
+      this.optionsParent.style.height = Math.min(size.height, size.y - 36) + 'px';
+      this.optionsParent.style.bottom = '36px';
+    } else {
+      this.optionsParent.style.height = Math.min(size.height, window.innerHeight - size.y) + 'px';
+    }
+  }
+
+  hideOptionsParent() {
+    this.optionsParent.classList.add("hidden-visually");
+    this.optionsParent.style.bottom = null;
+    this.optionsParent.style.height = null;
+  }
+
   attributeChangedCallback(name, oldValue, newValue) {
     setTimeout(() => {
       this.input = this.querySelector('input.options-input');
@@ -344,9 +364,9 @@ class DropdownList extends HTMLElement {
         throw "DropdownList error: options-input not found!";
       }
 
-      this.optionsNone = this.querySelector('ul.options-parent > li.options-none');
-      if (!this.optionsNone) {
-        throw "DropdownList error: options-none not found!";
+      this.optionsNotFound = this.querySelector('ul.options-parent > li.options-not-found');
+      if (!this.optionsNotFound) {
+        throw "DropdownList error: options-not-found not found!";
       }
 
       this.optionsParent = this.querySelector('ul.options-parent');
@@ -368,7 +388,7 @@ class DropdownList extends HTMLElement {
         var eventListener = e => {
           e.stopPropagation();
           this.selectOption(o);
-          this.optionsParent.classList.add("hidden-visually");
+          this.hideOptionsParent();
         };
         o.addEventListener("click", eventListener);
         this.optionsRemoveListeners.push(() => o.removeEventListener("click", eventListener));
@@ -399,8 +419,9 @@ class DropdownList extends HTMLElement {
 
 customElements.define('dropdown-list', DropdownList);
 
-var storedData = localStorage.getItem('myapp-model1');
+var storedData = localStorage.getItem('symptrack-data');
 var flags = storedData ? JSON.parse(storedData) : null;
+// console.log(flags);
 
 var { Elm } = require('../src/Main');
 var app = Elm.Main.init({
@@ -408,13 +429,28 @@ var app = Elm.Main.init({
   flags: flags
 });
 
-app.ports.setTrackables.subscribe(function (state) {
-  localStorage.setItem('myapp-model1', JSON.stringify(state));
-  setTimeout(function () { app.ports.onTrackablesChange.send(state); }, 0);
+app.ports.setUserData.subscribe(function (state) {
+  console.log(state);
+  localStorage.setItem('symptrack-data', JSON.stringify(state));
 });
 
-window.addEventListener("storage", function (event) {
-  if (event.storageArea === localStorage && event.key === 'myapp-model1') {
-    app.ports.onTrackablesChange.send(JSON.parse(event.newValue));
+app.ports.toggleElementFullScreen.subscribe(function (id) {
+  if (!document.fullscreenElement) {
+    document.getElementById(id).requestFullscreen()
+      .catch(err => console.log(err));
+  } else {
+    document.exitFullscreen();
+    app.ports.fullScreenChanged.send(false);
   }
-}, false);
+});
+
+document.addEventListener('fullscreenchange', (event) => {
+  if (document.fullscreenElement) {
+    screen.orientation.lock('landscape')
+      .catch(err => console.log(err));
+    app.ports.fullScreenChanged.send(true);
+  } else {
+    app.ports.fullScreenChanged.send(false);
+    screen.orientation.unlock();
+  }
+});

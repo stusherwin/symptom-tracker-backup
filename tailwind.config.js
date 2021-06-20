@@ -42,9 +42,11 @@ module.exports = {
       'black': theme('colors.black'),
       'white': theme('colors.white'),
       'red': theme('colors.red.500'),
-      'gray': theme('colors.gray.500'),
+      'gray': theme('colors.gray.400'),
+      'midGray': theme('colors.gray.300'),
       'lightGray': theme('colors.gray.200'),
       'lighterGray': theme('colors.gray.100'),
+      'lightestGray': theme('colors.gray.50'),
       'red': theme('colors.red.500'),
       'orange': theme('colors.orange.500'),
       'amber': theme('colors.amber.500'),
@@ -69,9 +71,11 @@ module.exports = {
       'black': theme('colors.black'),
       'white': theme('colors.white'),
       'red': theme('colors.red.500'),
-      'gray': theme('colors.gray.500'),
+      'gray': theme('colors.gray.400'),
+      'midGray': theme('colors.gray.300'),
       'lightGray': theme('colors.gray.200'),
       'lighterGray': theme('colors.gray.100'),
+      'lightestGray': theme('colors.gray.50'),
       'red': theme('colors.red.500'),
       'orange': theme('colors.orange.500'),
       'amber': theme('colors.amber.500'),
@@ -118,6 +122,11 @@ module.exports = {
       '4xl': '2.25rem',
       '5xl': '3rem',
       '6xl': '4rem'
+    },
+    minWidth: {
+      '0': '0',
+      '44': '11rem',
+      'full': '100%',
     }
   },
   variants: {
@@ -126,7 +135,7 @@ module.exports = {
       padding: ['first', 'last'],
       borderRadius: ['first', 'last'],
       backgroundColor: ['focus', 'group-hover', 'hover'],
-      backgroundOpacity: ['disabled']
+      backgroundOpacity: ['disabled'],
     }
   },
   plugins: [],

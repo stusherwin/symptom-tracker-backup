@@ -1,25 +1,26 @@
-port module Main exposing (main)
+module Main exposing (main)
 
 import Browser
 import Browser.Navigation as Nav
 import Date exposing (Date, Unit(..))
 import Html exposing (..)
 import Html.Attributes exposing (..)
-import Html.Events exposing (preventDefaultOn)
-import Icon exposing (IconType(..), icon, iconSymbols, logo)
 import Json.Decode as Decode
 import Json.Encode as Encode
 import Maybe exposing (Maybe)
+import Page.Chartables as ChartablesPage
+import Page.Charts as ChartsPage
 import Page.Day as DayPage
-import Page.Graph as GraphPage
-import Page.Settings as SettingsPage
+import Page.Trackables as TrackablesPage
+import Ports exposing (setUserData)
+import Svg.Icon exposing (IconType(..), icon, iconSymbols, logo)
 import Task
 import Throttle exposing (Throttle)
 import Time exposing (Month(..))
-import Trackable exposing (TrackableData(..))
-import Trackables exposing (Trackables)
 import Url exposing (Url)
 import Url.Parser as Parser exposing ((</>), Parser, oneOf, s, top)
+import UserData exposing (UserData)
+import UserData.LineChartId exposing (LineChartId(..))
 
 
 
@@ -45,8 +46,9 @@ main =
 type Route
     = Today
     | Day Date
-    | Settings
-    | Graph
+    | Trackables
+    | Chartables
+    | Charts (Maybe LineChartId)
 
 
 monthParser : Parser (Month -> a) a
@@ -59,28 +61,37 @@ routeParser =
     oneOf
         [ Parser.map Today top
         , Parser.map Day (Parser.map Date.fromCalendarDate (Parser.s "day" </> Parser.int </> monthParser </> Parser.int))
-        , Parser.map Settings (Parser.s "settings")
-        , Parser.map Graph (Parser.s "graph")
+        , Parser.map Trackables (Parser.s "trackables")
+        , Parser.map Chartables (Parser.s "chartables")
+        , Parser.map Charts (Parser.s "charts" </> Parser.map (Just << LineChartId) Parser.int)
+        , Parser.map (Charts Nothing) (Parser.s "charts")
         ]
 
 
-routeToPage : Date -> Trackables -> Maybe Route -> Page
-routeToPage today trackables route =
+routeToPage : Date -> UserData -> Maybe Route -> Nav.Key -> ( Page, Cmd Msg )
+routeToPage today userData route navKey =
     case route of
         Just Today ->
-            DayPage <| DayPage.init today today trackables
+            ( DayPage <| DayPage.init today today userData, Cmd.none )
 
         Just (Day date) ->
-            DayPage <| DayPage.init today date trackables
+            ( DayPage <| DayPage.init today date userData, Cmd.none )
 
-        Just Settings ->
-            SettingsPage <| SettingsPage.init trackables
+        Just Trackables ->
+            ( TrackablesPage <| TrackablesPage.init userData, Cmd.none )
 
-        Just Graph ->
-            GraphPage <| GraphPage.init today trackables
+        Just Chartables ->
+            ( ChartablesPage <| ChartablesPage.init userData, Cmd.none )
+
+        Just (Charts chartId) ->
+            let
+                ( model, cmd ) =
+                    ChartsPage.init today userData navKey chartId
+            in
+            ( ChartsPage model, Cmd.map ChartsPageMsg cmd )
 
         _ ->
-            NotFoundPage
+            ( NotFoundPage, Cmd.none )
 
 
 
@@ -95,24 +106,25 @@ type alias Model =
 
 
 type PageState
-    = Loading (Maybe Route) (Maybe Date) (Maybe Trackables)
+    = Loading (Maybe Route) (Maybe Date) (Maybe UserData)
     | Error String
-    | Loaded Date Trackables Page
+    | Loaded Date UserData Page
 
 
 type Page
     = DayPage DayPage.Model
-    | SettingsPage SettingsPage.Model
-    | GraphPage GraphPage.Model
+    | TrackablesPage TrackablesPage.Model
+    | ChartablesPage ChartablesPage.Model
+    | ChartsPage ChartsPage.Model
     | NotFoundPage
 
 
 init : Encode.Value -> Url -> Nav.Key -> ( Model, Cmd Msg )
 init flags url key =
     ( { pageState =
-            case Decode.decodeValue Trackables.decode flags of
-                Ok trackables ->
-                    Loading (Parser.parse routeParser url) Nothing (Just trackables)
+            case Decode.decodeValue UserData.decode flags of
+                Ok userData ->
+                    Loading (Parser.parse routeParser url) Nothing (Just userData)
 
                 Err err ->
                     -- Loading (Parser.parse routeParser url) Nothing (Just Trackable.init)
@@ -125,22 +137,23 @@ init flags url key =
 
 
 
--- PORTS
-
-
-port setTrackables : Encode.Value -> Cmd msg
-
-
-port onTrackablesChange : (Encode.Value -> msg) -> Sub msg
+-- SUBSCRIPTIONS
 
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.batch
-        [ onTrackablesChange TrackablesChanged
-        , Throttle.ifNeeded
+        [ Throttle.ifNeeded
             (Time.every 1000 (\_ -> UpdateThrottle))
             model.throttle
+        , case model.pageState of
+            Loaded _ _ (ChartsPage page) ->
+                Sub.map ChartsPageMsg (ChartsPage.subscriptions page)
+
+            -- Loaded _ _ (ChartPage page) ->
+            --     Sub.map ChartPageMsg (ChartPage.subscriptions page)
+            _ ->
+                Sub.none
         ]
 
 
@@ -153,26 +166,26 @@ type Msg
     | UrlChanged Url
     | LinkClicked Browser.UrlRequest
     | DayPageMsg DayPage.Msg
-    | GraphPageMsg GraphPage.Msg
-    | SettingsPageMsg SettingsPage.Msg
-    | TrackablesChanged Encode.Value
+    | ChartsPageMsg ChartsPage.Msg
+    | TrackablesPageMsg TrackablesPage.Msg
+    | ChartablesPageMsg ChartablesPage.Msg
     | UpdateThrottle
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     let
-        updateTrackables result =
-            case result of
-                Ok newTrackables ->
+        updateUserData userData_ =
+            case model.pageState of
+                Loaded today _ page ->
                     let
                         ( newThrottle, cmd ) =
-                            Throttle.try (setTrackables <| Trackables.encode <| newTrackables) model.throttle
+                            Throttle.try (setUserData <| UserData.encode <| userData_) model.throttle
                     in
-                    ( { model | throttle = newThrottle }, cmd )
+                    ( { model | throttle = newThrottle, pageState = Loaded today userData_ page }, cmd )
 
-                Err err ->
-                    ( { model | pageState = Error err }, Cmd.none )
+                _ ->
+                    ( model, Cmd.none )
     in
     case msg of
         LinkClicked urlRequest ->
@@ -188,135 +201,103 @@ update msg model =
                 route =
                     Parser.parse routeParser url
             in
-            ( { model
-                | pageState =
-                    case model.pageState of
-                        Loading _ d t ->
-                            Loading route d t
+            case model.pageState of
+                Loading _ d t ->
+                    ( { model | pageState = Loading route d t }, Cmd.none )
 
-                        Error err ->
-                            Error err
+                Error err ->
+                    ( { model | pageState = Error err }, Cmd.none )
 
-                        Loaded today trackables _ ->
-                            Loaded today trackables (routeToPage today trackables route)
-              }
-            , Cmd.none
-            )
+                Loaded today userData pageState ->
+                    case ( pageState, route ) of
+                        ( ChartsPage chartsPageModel, Just (Charts chartId) ) ->
+                            let
+                                ( page, cmd ) =
+                                    ChartsPage.urlChanged userData chartId chartsPageModel
+                            in
+                            ( { model | pageState = Loaded today userData (ChartsPage page) }, Cmd.map ChartsPageMsg cmd )
+
+                        _ ->
+                            let
+                                ( page, cmd ) =
+                                    routeToPage today userData route model.navKey
+                            in
+                            ( { model | pageState = Loaded today userData page }, cmd )
 
         GotCurrentDate today ->
             case model.pageState of
                 Loading route _ Nothing ->
                     ( { model | pageState = Loading route (Just today) Nothing }, Cmd.none )
 
-                Loading route _ (Just trackables) ->
-                    ( { model | pageState = Loaded today trackables (routeToPage today trackables route) }, Cmd.none )
+                Loading route _ (Just userData) ->
+                    let
+                        ( page, cmd ) =
+                            routeToPage today userData route model.navKey
+                    in
+                    ( { model | pageState = Loaded today userData page }, cmd )
 
                 _ ->
                     ( model, Cmd.none )
 
-        DayPageMsg (DayPage.UpdateTrackable fn id) ->
-            case model.pageState of
-                Loaded _ trackables _ ->
-                    updateTrackables <| Trackables.update id fn trackables
-
-                _ ->
-                    ( model, Cmd.none )
+        DayPageMsg (DayPage.UserDataUpdated userData_) ->
+            updateUserData userData_
 
         DayPageMsg dayPageMsg ->
             case model.pageState of
-                Loaded today trackables (DayPage dayPageModel) ->
+                Loaded today userData (DayPage dayPageModel) ->
                     let
                         ( newModel, cmd ) =
-                            DayPage.update dayPageMsg dayPageModel
+                            DayPage.update userData dayPageMsg dayPageModel
                     in
-                    ( { model | pageState = Loaded today trackables (DayPage newModel) }, Cmd.map DayPageMsg cmd )
+                    ( { model | pageState = Loaded today userData (DayPage newModel) }, Cmd.map DayPageMsg cmd )
 
                 _ ->
                     ( model, Cmd.none )
 
-        GraphPageMsg graphPageMsg ->
+        ChartsPageMsg (ChartsPage.UserDataUpdated userData_) ->
+            updateUserData userData_
+
+        ChartsPageMsg chartsPageMsg ->
             case model.pageState of
-                Loaded today trackables (GraphPage graphPageModel) ->
+                Loaded today userData (ChartsPage chartsPageModel) ->
                     let
                         ( newModel, cmd ) =
-                            GraphPage.update graphPageMsg graphPageModel
+                            ChartsPage.update userData chartsPageMsg chartsPageModel
                     in
-                    ( { model | pageState = Loaded today trackables (GraphPage newModel) }, Cmd.map GraphPageMsg cmd )
+                    ( { model | pageState = Loaded today userData (ChartsPage newModel) }, Cmd.map ChartsPageMsg cmd )
 
                 _ ->
                     ( model, Cmd.none )
 
-        SettingsPageMsg (SettingsPage.UpdateTrackable fn id) ->
+        TrackablesPageMsg (TrackablesPage.UserDataUpdated userData_) ->
+            updateUserData userData_
+
+        TrackablesPageMsg trackablesPageMsg ->
             case model.pageState of
-                Loaded _ trackables _ ->
-                    updateTrackables <| Trackables.update id fn trackables
-
-                _ ->
-                    ( model, Cmd.none )
-
-        SettingsPageMsg (SettingsPage.AddTrackable t id) ->
-            case model.pageState of
-                Loaded _ trackables _ ->
-                    updateTrackables <| Trackables.add id t trackables
-
-                _ ->
-                    ( model, Cmd.none )
-
-        SettingsPageMsg (SettingsPage.DeleteTrackable id) ->
-            case model.pageState of
-                Loaded _ trackables _ ->
-                    updateTrackables <| Trackables.delete id trackables
-
-                _ ->
-                    ( model, Cmd.none )
-
-        SettingsPageMsg settingsPageMsg ->
-            case model.pageState of
-                Loaded today trackables (SettingsPage settingsPageModel) ->
+                Loaded today userData (TrackablesPage trackablesPageModel) ->
                     let
                         ( newModel, cmd ) =
-                            SettingsPage.update settingsPageMsg settingsPageModel
+                            TrackablesPage.update userData trackablesPageMsg trackablesPageModel
                     in
-                    ( { model | pageState = Loaded today trackables (SettingsPage newModel) }, Cmd.map SettingsPageMsg cmd )
+                    ( { model | pageState = Loaded today userData (TrackablesPage newModel) }, Cmd.map TrackablesPageMsg cmd )
 
                 _ ->
                     ( model, Cmd.none )
 
-        TrackablesChanged data ->
-            case Decode.decodeValue Trackables.decode data of
-                Ok trackables ->
-                    case model.pageState of
-                        Loading route d _ ->
-                            ( { model | pageState = Loading route d (Just trackables) }, Cmd.none )
+        ChartablesPageMsg (ChartablesPage.UserDataUpdated userData_) ->
+            updateUserData userData_
 
-                        Loaded today _ (GraphPage graphPageModel) ->
-                            let
-                                ( newModel, cmd ) =
-                                    GraphPage.update (GraphPage.TrackablesChanged trackables) graphPageModel
-                            in
-                            ( { model | pageState = Loaded today trackables (GraphPage newModel) }
-                            , Cmd.map GraphPageMsg cmd
-                            )
+        ChartablesPageMsg chartablesPageMsg ->
+            case model.pageState of
+                Loaded today userData (ChartablesPage chartablesPageModel) ->
+                    let
+                        ( newModel, cmd ) =
+                            ChartablesPage.update userData chartablesPageMsg chartablesPageModel
+                    in
+                    ( { model | pageState = Loaded today userData (ChartablesPage newModel) }, Cmd.map ChartablesPageMsg cmd )
 
-                        Loaded today _ (DayPage dayPageModel) ->
-                            let
-                                ( newModel, cmd ) =
-                                    DayPage.update (DayPage.TrackablesChanged trackables) dayPageModel
-                            in
-                            ( { model | pageState = Loaded today trackables (DayPage newModel) }
-                            , Cmd.map DayPageMsg cmd
-                            )
-
-                        Loaded today _ page ->
-                            ( { model | pageState = Loaded today trackables page }
-                            , Cmd.none
-                            )
-
-                        _ ->
-                            ( model, Cmd.none )
-
-                Err err ->
-                    ( { model | pageState = Error (Decode.errorToString err) }, Cmd.none )
+                _ ->
+                    ( model, Cmd.none )
 
         UpdateThrottle ->
             let
@@ -337,7 +318,7 @@ view model =
         [ iconSymbols
         , div [ class "min-h-screen bg-gray-600" ]
             [ div
-                [ class "mobile-width mx-auto min-h-screen relative bg-white" ]
+                [ class "mobile-width mx-auto min-h-screen relative bg-gray-300" ]
                 [ viewMenu model.pageState
                 , div [ class "flex flex-col items-stretch" ] <|
                     case model.pageState of
@@ -353,11 +334,14 @@ view model =
                                     DayPage dayModel ->
                                         Html.map DayPageMsg <| DayPage.view dayModel
 
-                                    SettingsPage settingsModel ->
-                                        Html.map SettingsPageMsg <| SettingsPage.view settingsModel
+                                    TrackablesPage trackablesModel ->
+                                        Html.map TrackablesPageMsg <| TrackablesPage.view trackablesModel
 
-                                    GraphPage graphModel ->
-                                        Html.map GraphPageMsg <| GraphPage.view graphModel
+                                    ChartablesPage chartablesModel ->
+                                        Html.map ChartablesPageMsg <| ChartablesPage.view chartablesModel
+
+                                    ChartsPage graphModel ->
+                                        Html.map ChartsPageMsg <| ChartsPage.view graphModel
 
                                     NotFoundPage ->
                                         viewNotFoundPage
@@ -376,8 +360,9 @@ viewMenu pageState =
         , h1 [ class "ml-2 text-xl font-bold text-center" ] [ text "Symptrack" ]
         , div [ class "mx-auto" ] []
         , a [ href "/", class "mr-2 rounded p-2 bg-gray-700 hover:bg-gray-600 text-white" ] [ icon "w-5 h-5" SolidCalendarAlt ]
-        , a [ href "/graph", class "mr-2 rounded p-2 bg-gray-700 hover:bg-gray-600 text-white" ] [ icon "w-5 h-5" SolidChartLine ]
-        , a [ href "/settings", class "rounded p-2 bg-gray-700 hover:bg-gray-600 text-white" ] [ icon "w-5 h-5" SolidCog ]
+        , a [ href "/charts", class "mr-2 rounded p-2 bg-gray-700 hover:bg-gray-600 text-white" ] [ icon "w-5 h-5" SolidChartArea ]
+        , a [ href "/trackables", class "mr-2 rounded p-2 bg-gray-700 hover:bg-gray-600 text-white" ] [ icon "w-5 h-5" SolidCalendarCheck ]
+        , a [ href "/chartables", class "rounded p-2 bg-gray-700 hover:bg-gray-600 text-white" ] [ icon "w-5 h-5" SolidChartLine ]
         ]
 
 
@@ -403,12 +388,3 @@ viewNotFoundPage =
         [ h1 [ class "font-bold text-3xl text-center" ]
             [ text "Page not found" ]
         ]
-
-
-onClickPreventDefault : msg -> Attribute msg
-onClickPreventDefault msg =
-    let
-        alwaysPreventDefault m =
-            ( m, True )
-    in
-    preventDefaultOn "click" (Decode.map alwaysPreventDefault (Decode.succeed msg))
